@@ -20,6 +20,8 @@
 @property (readwrite) NSInteger currentContrast;
 @property (readwrite) NSInteger maxContrast;
 
+@property BOOL* stop, running;
+
 @property (strong, readwrite) NSString* currentAutoAttribute;
 
 
@@ -32,6 +34,9 @@
         _model = [model copy];
         self.screenNumber = screenID;
         _serial = [serial copy];
+        
+        _running = NO;
+        _stop = NO;
 
         _brightnessOutlets = [NSMutableArray array];
         _contrastOutlets = [NSMutableArray array];
@@ -115,11 +120,38 @@
 - (void)setContrast:(NSInteger)contrast {
     if(contrast > self.maxContrast)
         contrast = self.maxContrast;
+    
+    while (_running) {
+        _stop = YES;
+    }
+    _stop = NO;
+    
+    int startContrast = self.currentContrast;
+    float transitionTime = 0.25; //ms
+    int diff = contrast - startContrast;
+    float time = transitionTime / abs(diff);
+    
+    dispatch_async(dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        _running = YES;
+        for (int i = startContrast; (diff>0) ? i<=contrast : i>=contrast; (diff>0) ? i++ : i--) {
+            if (_stop) {
+                _running = NO;
+                return;
+            }
+            [controls changeDisplay:self.screenNumber control:CONTRAST withValue: i];
+            self.currentContrast = contrast;
+            NSLog(@"contrastStep: %d", i);
+            [NSThread sleepForTimeInterval:time];
+            //sleep(1);
+        }
+        _running = NO;
+        NSLog(@"Screen: %@ - %ud Contrast changed to %ld", _model, self.screenNumber, (long)self.currentContrast);
+    });
+    
+    
+    //[controls changeDisplay:self.screenNumber control:CONTRAST withValue: contrast];
+    //self.currentContrast = contrast;
 
-    [controls changeDisplay:self.screenNumber control:CONTRAST withValue: contrast];
-    self.currentContrast = contrast;
-
-    NSLog(@"Screen: %@ - %ud Contrast changed to %ld", _model, self.screenNumber, (long)self.currentContrast);
 }
 
 - (void)setContrastWithPercentage:(NSInteger)percentage byOutlet:(NSView*)outlet {
